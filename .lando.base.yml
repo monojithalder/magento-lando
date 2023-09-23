@@ -1,0 +1,160 @@
+#####
+# Built & Tested against: v3.0.0-rc.16
+#
+# **Notes**
+#   - You can override this file with your own `lando.yml` or, a Git ignored `.lando.local.yml`
+#   - The first time that this project is launched, it will take Lando a while to get past "waiting until nginx service is ready"
+#     This is because Magento has not yet been setup and is 302-redirecting "/" to "/setup" while Lando is hoping for a "200"
+#     response. One the setup has completed Lando will show a ready-state much more quickly on the next start-up.
+
+# Give this Lando project a unique name
+name: m2-lando-base
+
+# Start with the default LEMP recipe
+recipe: lemp
+
+proxy:
+  # Set Magento URL
+  appserver_nginx:
+    - magento2.lndo.site
+
+# Configure the LEMP recipe
+config:
+  # PHP 7.2 for Magento 2.2.3 - adjust as needed
+  php: '7.3'
+  webroot: pub
+  database: mysql
+  composer_version: '1.10.21'
+
+  # Optionally activate xdebug
+  xdebug: false
+
+  # Optionally mix in your own config files
+  #
+  # If omitted this will use "sane defaults" for your recipe type
+  config:
+    # Relative to Magento project root
+    vhosts: dev/lando/config/nginx.conf
+    #php: config/php.ini
+
+services:
+  # Provide some custom options for the database service
+  database:
+    # Make a random port available to the host machine for your MySQL connection.
+    # This can be a number if you want to map a specific port
+    portforward: true
+
+  appserver:
+    # This will only run the first time `lando start` is executed or on `lando rebuild`
+    build_as_root:
+      # Install Magento-required xsl extension
+      - apt-get update -y -q && apt-get install -y libxslt-dev && docker-php-ext-install xsl
+      - docker-php-ext-install sockets
+  node:
+    type: 'node:12'
+  elastiscsearch:
+    type: elasticsearch:7
+    portforward: true
+  
+
+tooling:
+  magento:download:
+    description: Initialize Magento 2 project in current directory
+    cmd: /app/dev/lando/tooling/magento.download.php
+    service: appserver
+    level: app
+    options:
+      mage-edition:
+        passthrough: true
+        describe: Magento Edition - Open Source or Commerce?
+        interactive:
+          type: list
+          message: Which Magento Edition?
+          default: Open Source
+          choices:
+            - Open Source
+            - Commerce
+
+      mage-version:
+        passthrough: true
+        describe: Magento Version
+        interactive:
+          type: input
+          default: 2.4
+          message: Magento Version
+          weight: 600
+
+      notify-magento:
+        passthrough: false
+        interactive:
+          type: input
+          message: |
+            Fetch your Magento Access keys and then press any key to continue...
+
+            https://marketplace.magento.com/customer/accessKeys/
+          weight: 600
+      mage-access-key-public:
+        passthrough: true
+        describe: Magento Access Key (Public)
+        interactive:
+          type: input
+          message: Magento Access Key (Public)
+          weight: 600
+      mage-access-key-private:
+        passthrough: true
+        describe: Magento Access Key (Private)
+        interactive:
+          type: password
+          message: Magento Access Key (Private)
+          weight: 600
+      notify-github:
+        passthrough: false
+        interactive:
+          type: input
+          message: |
+            Fetch your GitHub token and then press any key to continue...
+
+            https://github.com/settings/tokens
+          weight: 600
+
+      github-token:
+        passthrough: true
+        describe: GitHub Token
+        interactive:
+          type: password
+          message: GitHub Token
+          weight: 600
+
+  magento:setup:quick:
+    description: Automated process to quickly configure Magento for Lando. Accepts `bin/magento setup:install` arguments
+    cmd: test -f /app/bin/magento || exit 0 && /app/bin/magento setup:install --db-host database --db-name lemp --db-user lemp --db-password lemp --admin-firstname="admin" --admin-lastname="admin" --admin-email="user@example.com" --admin-user="admin" --admin-password="admin123" --magento-init-params="MAGE_MODE=developer" --search-engine=elasticsearch7 --elasticsearch-host="elastiscsearch" --elasticsearch-port=9200
+    service: appserver
+    options: # Options are required in order for `lando --help` to work for this command
+      "help":
+        passthrough: false
+
+  magento:
+    description: Execute ./bin/magento commands
+    cmd: test -f /app/bin/magento && /app/bin/magento
+    service: appserver
+
+  magento:setup:destroy:
+    description: Automated process to quickly reset Magento's database to empty.
+    cmd: /app/bin/magento setup:uninstall
+    service: appserver
+    options: # Options are required in order for `lando --help` to work for this command
+      "help":
+        passthrough: false
+        description: Use `lando --help magento:setup:destroy`
+
+  node:
+    description: Run node
+    service: node
+
+  yarn:
+    description: Run node
+    service: node
+
+  npm:
+    description: Run node
+    service: node
